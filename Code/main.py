@@ -3,6 +3,8 @@ import math
 
 # Constants
 
+# The initial angle reading to use as an offset later on
+INIT_ANGLE = [0, 0, 0]
 # Roborave cell size is slightly over 26.5 cm (including posts, approximately 27.7 cm)
 CELL_SIZE = 36
 # Speed should have a magnitude no greater than 30
@@ -15,9 +17,19 @@ BACK = 2
 
 # Functions
 
+# Replaces IMU.readGyroAccum() to account for any initial accumulation prior to the start of the program.
+def progGyroAccum(axis=None):
+    if axis == None:
+        reading = IMU.readGyroAccum()
+        return [reading[0] - INIT_ANGLE[0], reading[1] - INIT_ANGLE[1], reading[2] - INIT_ANGLE[2]]
+    elif axis >= 0 and axis <= 2:
+        return IMU.readGyroAccum(axis) - INIT_ANGLE[axis]
+    else:
+        raise Exception("Argument to IMU.readGyroAccum must be a number between 0 and 2")
+
 # Determines the change in angle required to correct the bearing
 def correctBearing():
-    rotation = IMU.readGyroAccum(2)
+    rotation = progGyroAccum(2)
     offset = rotation % TURN
     if offset > (TURN / 2):
         offset -= TURN
@@ -34,6 +46,10 @@ def selfCentreAngle():
         turn_angle = 90 - (math.atan(tan_theta) * 180 / math.pi)
         return side * round(turn_angle)
     return 0
+
+# Used to move the rover forward one cell
+def moveForward(distance):
+    Motors.moveDistance(distance, MOVE_SPEED)
 
 # Removes dead ends from the path
 def cullDeadEnds(path_taken):
@@ -92,24 +108,24 @@ def main():
     while True:
         # Checks in turn: left, straight, right, and backward turns.
         if IR.readLeft() > CELL_SIZE:
-            Motors.write(0, 0, 0.1)
+            delay(0.1)
             Motors.turnDegrees(LEFT * TURN + correctBearing(), MOVE_SPEED)
-            Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
+            moveForward(CELL_SIZE)
             path_taken.append(LEFT)
         elif Ultrasonic.read() > CELL_SIZE:
             Motors.turnDegrees(STRAIGHT * TURN + correctBearing() + selfCentreAngle(), MOVE_SPEED)
-            Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
+            moveForward(CELL_SIZE)
             path_taken.append(STRAIGHT)
         elif IR.readRight() > CELL_SIZE:
-            Motors.write(0, 0, 0.1)
+            delay(0.1)
             Motors.turnDegrees(RIGHT * TURN + correctBearing(), MOVE_SPEED)
-            Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
+            moveForward(CELL_SIZE)
             path_taken.append(RIGHT)
         else:
-            Motors.write(0, 0, 0.1)
+            delay(0.1)
             Motors.turnDegrees(BACK * TURN, MOVE_SPEED)
             Motors.turnDegrees(correctBearing() + selfCentreAngle(), MOVE_SPEED)
-            Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
+            moveForward(CELL_SIZE)
             path_taken.append(BACK)
         if reachedEnd():
             break
@@ -123,8 +139,8 @@ def main():
     Motors.turnDegrees(BACK * TURN + correctBearing(), MOVE_SPEED)
     # Follows the path taken to return to start
     for i in return_path:
-        Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
-        Motors.write(0, 0, 0.1)
+        moveForward(CELL_SIZE)
+        delay(0.1)
         centering_angle = 0
         if i == STRAIGHT:
             centering_angle = selfCentreAngle()
@@ -178,6 +194,7 @@ rc.startRover()
 
 # Pauses program until ready to start
 input("Press Enter to continue...")
+INIT_ANGLE = IMU.readGyroAccum()
 main()
 
 rc.stopRover()
