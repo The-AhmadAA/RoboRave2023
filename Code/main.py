@@ -1,5 +1,6 @@
 from micromelon import *
 import math
+import time
 
 # Constants
 
@@ -7,6 +8,7 @@ import math
 INIT_ANGLE = [0, 0, 0]
 # Roborave cell size is slightly over 26.5 cm (including posts, approximately 27.7 cm)
 CELL_SIZE = 36
+CLEARANCE = 15
 # Speed should have a magnitude no greater than 30
 MOVE_SPEED = 25
 TURN = 90
@@ -14,6 +16,9 @@ LEFT = -1
 RIGHT = 1
 STRAIGHT = 0
 BACK = 2
+# Stores whether the finish line has been reached.
+REACHED_CHEESE = False
+FINISHED = False
 
 # Functions
 
@@ -49,7 +54,19 @@ def selfCentreAngle():
 
 # Used to move the rover forward one cell
 def moveForward(distance):
-    Motors.moveDistance(distance, MOVE_SPEED)
+    # Motors.moveDistance(distance, MOVE_SPEED)
+    Motors.write(MOVE_SPEED)
+    start = time.time()
+    while (time.time() - start < distance / MOVE_SPEED):
+        if COLOURS.GREEN in Colour.readAllSensors(CS.ALL):
+            REACHED_CHEESE = True
+            break
+        elif COLOURS.BLACK in Colour.readAllSensors(CS.ALL):
+            FINISHED = True
+    Motors.write(0)
+    delay(0.01)
+    if Ultrasonic.read() < CLEARANCE:
+        Motors.moveDistance(Ultrasonic.read() - CLEARANCE)
 
 # Removes dead ends from the path
 def cullDeadEnds(path_taken):
@@ -97,7 +114,7 @@ def reversePath(path_taken):
 # Determines whether the rover has reached the end square of the maze
 def reachedEnd():
     colour_brightness = Colour.readSensor(CS.BRIGHT, 1)
-    return colour_brightness > 180
+    return colour_brightness > 180 or REACHED_CHEESE
 
 # Main control flow function
 
@@ -133,8 +150,10 @@ def main():
     print("Reached goal!")
     # Remove dead-end routes from the path
     clean_path = cullDeadEnds(path_taken)
+    print("Path cleansed")
     # Reverses order of path taken to return correctly
     return_path = reversePath(clean_path)
+    print("Path reversed")
 
     Motors.turnDegrees(BACK * TURN + correctBearing(), MOVE_SPEED)
     # Follows the path taken to return to start
@@ -194,8 +213,11 @@ rc.startRover()
 
 # Pauses program until ready to start
 input("Press Enter to continue...")
+start = time.time()
 INIT_ANGLE = IMU.readGyroAccum()
 main()
+end = time.time()
+print(f"The full run took {end - start} seconds to complete. This would result in {3 * (4 * 60 + start - end)} time points.")
 
 rc.stopRover()
 rc.end()
