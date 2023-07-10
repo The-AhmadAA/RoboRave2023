@@ -58,8 +58,8 @@ def correctBearing():
 # Determines whether the rover is between two walls, and if so uses the difference in distance to center itself.
 def selfCentreAngle(distance):
     if IR.readLeft() < CELL_SIZE and IR.readRight() < CELL_SIZE:
-        global CLEARANCE
-        CLEARANCE = (IR.readLeft() + IR.readRight() + 2 * CLEARANCE) / 4
+        #global CLEARANCE
+        #CLEARANCE = (IR.readLeft() + IR.readRight() + 2 * CLEARANCE) / 4
         dist_from_mid = abs(IR.readRight() - IR.readLeft()) / 2
         side = -1 * (not IR.readRight() > IR.readLeft()) + (IR.readRight() > IR.readLeft())
         if dist_from_mid == 0:
@@ -80,8 +80,11 @@ def moveForward(distance):
     start = time.time()
     while (time.time() - start < distance / MOVE_SPEED):
         # Stop when at the final cell
-        if reachedEnd() and not REACHED_CHEESE:
-            break
+        if not REACHED_CHEESE:
+            if reachedEnd():
+                break
+        else:
+            reachedEnd()
         # Don't drive into a wall
         if Ultrasonic.read() < CLEARANCE:
             break
@@ -163,18 +166,20 @@ def reachedEnd():
 def searching():
     # Checks in turn: left, straight, right, and backward turns.
     if IR.readLeft() > CELL_SIZE:
+        wall_boost = (IR.readRight() < CELL_SIZE) * (CLEARANCE - IR.readRight())
         delay(0.1)
         Motors.turnDegrees(LEFT * TURN + correctBearing(), MOVE_SPEED)
-        moveForward(CELL_SIZE)
+        moveForward(CELL_SIZE + wall_boost)
         return LEFT
-    elif Ultrasonic.read() > CELL_SIZE:
+    elif Ultrasonic.read() > 0.75 * CELL_SIZE:
         Motors.turnDegrees(STRAIGHT * TURN + correctBearing() + selfCentreAngle(CELL_SIZE), MOVE_SPEED)
         moveForward(CELL_SIZE)
         return STRAIGHT
     elif IR.readRight() > CELL_SIZE:
+        wall_boost = (IR.readLeft() < CELL_SIZE) * (CLEARANCE - IR.readLeft())
         delay(0.1)
         Motors.turnDegrees(RIGHT * TURN + correctBearing(), MOVE_SPEED)
-        moveForward(CELL_SIZE)
+        moveForward(CELL_SIZE + wall_boost)
         return RIGHT
     else:
         if Ultrasonic.read() < CLEARANCE:
@@ -226,10 +231,9 @@ def main():
         moveForward(CELL_SIZE)
         delay(0.1)
         Motors.turnDegrees(i * TURN + correctBearing() + selfCentreAngle(CELL_SIZE), MOVE_SPEED)
-    print("Backtrack finished", FINISHED)
+    print("Backtrack finished")
     while not FINISHED:
         searching()
-        print(FINISHED)
     print("Returned to start!")
 
 
