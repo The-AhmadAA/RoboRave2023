@@ -28,10 +28,12 @@ BACK = 2
 # Not so constants
 # Stores whether the finish line has been reached.
 REACHED_CHEESE = False
-DUMMY = False
 FINISHED = False
 # The clearance to maintain when approaching walls, is updated throughout the run for accuracy
 CLEARANCE = (CELL_SIZE - ROVER_SIZE) / 2
+
+# Sim details
+START_COLOUR = [215, 190, 60]
 
 # Functions
 
@@ -92,12 +94,15 @@ def moveForward(distance):
 def cullDeadEnds(path_taken):
     dead_ends = True
     while dead_ends:
+        print(len(path_taken), path_taken)
         dead_ends = False
         for i in range(len(path_taken)):
             # Dead end found when the rover had to double back on itself
             if path_taken[i] == BACK:
                 dead_ends = True
+                k = 0
                 for j in range(1, i):
+                    k = j
                     # Checks whether the moves are still backtracking
                     if path_taken[i - j] == STRAIGHT and path_taken[i + j] == STRAIGHT:
                         continue
@@ -106,17 +111,17 @@ def cullDeadEnds(path_taken):
                     elif path_taken[i - j] == LEFT and path_taken[i + j] == RIGHT:
                         continue
                     else:
-                        # Replaces the original detour with the correct turn
-                        if path_taken[i - j] == LEFT and path_taken[i + j] == LEFT:
-                            path_taken[i - j] = STRAIGHT
-                        elif path_taken[i - j] == LEFT and path_taken[i + j] == STRAIGHT:
-                            path_taken[i - j] = RIGHT
-                        elif path_taken[i - j] == STRAIGHT and path_taken[i + j] == LEFT:
-                            path_taken[i - j] = RIGHT
-                        # Removes the dead end from the route
-                        for _ in range(2 * j):
-                            path_taken.pop(i - j + 1)
                         break
+                # Replaces the original detour with the correct turn
+                if path_taken[i - k] == LEFT and path_taken[i + k] == LEFT:
+                    path_taken[i - k] = STRAIGHT
+                elif path_taken[i - k] == LEFT and path_taken[i + k] == STRAIGHT:
+                    path_taken[i - k] = RIGHT
+                elif path_taken[i - k] == STRAIGHT and path_taken[i + k] == LEFT:
+                    path_taken[i - k] = RIGHT
+                # Removes the dead end from the route
+                for _ in range(2 * k):
+                    path_taken.pop(i - k + 1)
             if dead_ends:
                 break
     return path_taken
@@ -133,14 +138,19 @@ def reversePath(path_taken):
 
 # Determines whether the rover has reached the end square of the maze
 def reachedEnd():
-    global DUMMY, REACHED_CHEESE
+    global REACHED_CHEESE, FINISHED
     # -----
-    colour_brightness = Colour.readSensor(CS.BRIGHT, 1)
-    if colour_brightness > 180:
-        REACHED_CHEESE = True
-    return colour_brightness > 180
+    if not REACHED_CHEESE:
+        colour_brightness = Colour.readSensor(CS.BRIGHT, 1)
+        if colour_brightness > 180:
+            REACHED_CHEESE = True
+        return colour_brightness > 180
+    else:
+        if passesColour(START_COLOUR):
+            FINISHED = True
+        return passesColour(START_COLOUR)
     # -----
-    # Remove everything in the above block for physical testing.
+    # Comment out everything in the above block for physical testing.
     if not DUMMY and passesColour(COLOURS.GREEN):
             DUMMY = True
             REACHED_CHEESE = True
@@ -148,6 +158,32 @@ def reachedEnd():
     elif passesColour(COLOURS.BLACK):
         FINISHED = True
         return True
+
+# Runs the logic for the 'hug-left-wall' algorithm and returns the decision
+def searching():
+    # Checks in turn: left, straight, right, and backward turns.
+    if IR.readLeft() > CELL_SIZE:
+        delay(0.1)
+        Motors.turnDegrees(LEFT * TURN + correctBearing(), MOVE_SPEED)
+        moveForward(CELL_SIZE)
+        return LEFT
+    elif Ultrasonic.read() > CELL_SIZE:
+        Motors.turnDegrees(STRAIGHT * TURN + correctBearing() + selfCentreAngle(CELL_SIZE), MOVE_SPEED)
+        moveForward(CELL_SIZE)
+        return STRAIGHT
+    elif IR.readRight() > CELL_SIZE:
+        delay(0.1)
+        Motors.turnDegrees(RIGHT * TURN + correctBearing(), MOVE_SPEED)
+        moveForward(CELL_SIZE)
+        return RIGHT
+    else:
+        if Ultrasonic.read() < CLEARANCE:
+            Motors.moveDistance(Ultrasonic.read() - CLEARANCE)
+        delay(0.1)
+        Motors.turnDegrees(BACK * TURN, MOVE_SPEED)
+        Motors.turnDegrees(correctBearing() + selfCentreAngle(CELL_SIZE), MOVE_SPEED)
+        moveForward(CELL_SIZE)
+        return BACK
 
 # Main control flow function
 
@@ -160,32 +196,14 @@ def main():
     moveForward(CELL_SIZE)
     path_taken.append(STRAIGHT)
 
-    while True:
-        # Checks in turn: left, straight, right, and backward turns.
-        if IR.readLeft() > CELL_SIZE:
-            delay(0.1)
-            Motors.turnDegrees(LEFT * TURN + correctBearing(), MOVE_SPEED)
-            moveForward(CELL_SIZE)
-            path_taken.append(LEFT)
-        elif Ultrasonic.read() > CELL_SIZE:
-            Motors.turnDegrees(STRAIGHT * TURN + correctBearing() + selfCentreAngle(CELL_SIZE), MOVE_SPEED)
-            moveForward(CELL_SIZE)
-            path_taken.append(STRAIGHT)
-        elif IR.readRight() > CELL_SIZE:
-            delay(0.1)
-            Motors.turnDegrees(RIGHT * TURN + correctBearing(), MOVE_SPEED)
-            moveForward(CELL_SIZE)
-            path_taken.append(RIGHT)
+    while not REACHED_CHEESE:
+        if IMU.isFlipped():
+            if Ultrasonic.read() < CELL_SIZE:
+                Motors.moveDistance(-CELL_SIZE, MOVE_SPEED)
+            else:
+                Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
         else:
-            if Ultrasonic.read() < CLEARANCE:
-                Motors.moveDistance(Ultrasonic.read() - CLEARANCE)
-            delay(0.1)
-            Motors.turnDegrees(BACK * TURN, MOVE_SPEED)
-            Motors.turnDegrees(correctBearing() + selfCentreAngle(CELL_SIZE), MOVE_SPEED)
-            moveForward(CELL_SIZE)
-            path_taken.append(BACK)
-        if REACHED_CHEESE:
-            break
+            path_taken.append(searching())
     # Print statement helps show the rover is on track
     print("Reached goal!")
 
@@ -208,6 +226,10 @@ def main():
         moveForward(CELL_SIZE)
         delay(0.1)
         Motors.turnDegrees(i * TURN + correctBearing() + selfCentreAngle(CELL_SIZE), MOVE_SPEED)
+    print("Backtrack finished", FINISHED)
+    while not FINISHED:
+        searching()
+        print(FINISHED)
     print("Returned to start!")
 
 
