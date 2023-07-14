@@ -8,7 +8,7 @@ from retrieve import *
 # -----
 # Things to fiddle with for calibration:
 # Roborave cell size is slightly over 26.5 cm (including posts, approximately 27.7 cm)
-CELL_SIZE = 25  # if using sim use 36
+CELL_SIZE = 24  # if using sim use 36
 # Rover length / width in cm
 ROVER_SIZE = 13
 # Speed should have a magnitude no greater than 30
@@ -102,7 +102,8 @@ def moveForward(distance):
                 break
         else:
             reachedEnd()
-        # Don't drive into a wall
+        # Don't drive into a wall, stop if uncommanded rotation about x or y
+        # or progGyroAccum(0) > TOLERANCE or progGyroAccum(1) > TOLERANCE:
         if Ultrasonic.read() < CLEARANCE:
             break
     Motors.write(0)
@@ -246,6 +247,8 @@ def main():
     print("Reached goal!")
 
     # -----
+    # back up to avoid case where cheese is close to the line
+    Motors.moveDistance(-5)
     grab_cheese()
     # This is where the cheese pickup happens, replace this block.
     # Once cheese is picked up, will need to drive forward into the
@@ -322,11 +325,11 @@ input("Press Enter to continue...")
 # Sets a reference orientation
 INIT_ANGLE = IMU.readGyroAccum()
 # Runs and times program
-start = time.time()
+# start = time.time()
 main()
-end = time.time()
-print(
-    f"The full run took {end - start} seconds to complete. This would result in {3 * (4 * 60 + start - end)} time points.")
+# end = time.time()
+# print(
+#     f"The full run took {end - start} seconds to complete. This would result in {3 * (4 * 60 + start - end)} time points.")
 
 rc.stopRover()
 rc.end()
