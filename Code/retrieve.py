@@ -1,121 +1,134 @@
-# Cheese retrieval arm init and operation 
+# Cheese retrieval arm init and operation
 import micromelon as mc
+from time import sleep
 
 # constant definitions
-EXTEND_ANGLE = 180
-STOW_ANGLE = 0
-PREGRIP_POSITION = 90
-GRIP_POSITION = 120
+EXTEND_ANGLE = 80
+STOW_ANGLE = -89
+PREGRIP_POSITION = 50
+GRIP_POSITION = 84
 PREGRIP_STOW = 0
 
+PRE_SCAN_TURN = 10
 LEFT = -20
 RIGHT = 20
-INCREMENTS = 8
+INCREMENTS = 10
+TURN_SPEED = 5
+
+MIN_DIST = 4
+MAX_DIST = 5
+
+RETRIEVING = True
+
 
 def extend_arm():
-   # extend the arm to grabbing position 
-   # FIXME: servo functions are not being recognised?
-   mc.Servos.right(EXTEND_ANGLE)
+    # extend the arm to grabbing position
+    mc.Servos.right(EXTEND_ANGLE)
 
 
 def stow_arm():
-   # stow the arm once the cheese has been grabbed
-   mc.Servos.right(STOW_ANGLE)
+    # stow the arm once the cheese has been grabbed
+    mc.Servos.right(STOW_ANGLE)
 
 
 def pregrip_pos():
-   # position the gripper for pre grip, once the arm is deployed
+    # position the gripper for pre grip, once the arm is deployed
     mc.Servos.left(PREGRIP_POSITION)
 
 
 def grip():
-   # grip the cheese once in position
-   mc.Servos.left(GRIP_POSITION)
+    # grip the cheese once in position
+    mc.Servos.left(GRIP_POSITION)
 
 
 def scan_for_cheese(scan_limit) -> int:
-   # scan left/right to find position of lowest US distance
+    # scan left/right to find position of lowest Ultrasonic distance value
     smallest = 255
     bearing = 0
     turned = 0
+    found = False
+    increment_count = 0
 
-    # turn 20 degrees and find the smalled ultrasonic distance 
-    # reading., and the increment at which it was found
-    while(turned < scan_limit):
+    # turn 20 degrees and find the smallest ultrasonic distance
+    # reading, and the increment at which it was found
+    while (turned < scan_limit):
 
         mc.Motors.turnDegrees(scan_limit//INCREMENTS)
         turned += scan_limit//INCREMENTS
         if (smallest > mc.Ultrasonic.read()):
             smallest = mc.Ultrasonic.read()
             bearing = turned
-    mc.Motors.turnDegrees(-scan_limit)
+            increment_count += 1
+    mc.Motors.turnDegrees(-((scan_limit//INCREMENTS) *
+                          increment_count + 2))
+
+    adjust_distance(smallest)
     return bearing
 
-rc = mc.RoverController()
 
-# Sets up the connection type
-usingSim = False
-print("Are you using:", "A) a bot; or", "B) simulation?", sep="\n")
-while True:
-    entry = input()
-    if entry.upper() == "A":
-        usingSim = False
-        break
-    elif entry.upper() == "B":
-        usingSim = True
-        break
-    else:
-        print("Invalid input, please enter \"A\" or \"B\".")
+def adjust_distance(smallest):
+    distance = smallest
+    if (distance < MIN_DIST or distance > MAX_DIST):
+        while (True):
+            # move the rover until the cheese is within distance limits
+            if (distance < MIN_DIST):
+                mc.Motors.moveDistance(-1)  # (MIN_DIST - smallest))
+            elif (distance > MAX_DIST):
+                mc.Motors.moveDistance(1)  # smallest - MAX_DIST)
+            else:
+                break
+            distance = mc.Ultrasonic.read()
 
 
-def main():
-    
-    # scan left, scan right, 
-    smallest_dir = scan_for_cheese(LEFT)
-    temp = scan_for_cheese(RIGHT)
+def grab_cheese():
 
-    if (temp < smallest_dir):
-        smallest_dir = temp
+    # set leds to indicate cheese grabbing mode
+    mc.LEDs.writeAll([0, 255, 255])
 
-    mc.Motors.turnDegrees(smallest_dir - 20)
-    extend_arm()
-    pregrip_pos()
-    mc.Motors.turnDegrees(25)
-    grip()
+    # configure arm for scan
+    print("configuring arm for scan")
     stow_arm()
+    pregrip_pos()
+
+    # scan for the cheese
+    print("Scanning for cheese")
+    # scan left, scan right,
+    print("scanning right")
+
+    # turn left to scan past the cheese
+    mc.Motors.turnDegrees(-PRE_SCAN_TURN)
+    smallest_dir = scan_for_cheese(RIGHT)
+
+    print(f"Cheese found at bearing {smallest_dir}")
+
+    mc.Motors.turnDegrees(smallest_dir - 25)
+    pregrip_pos()
+    print("pregrip" + str(mc.Servos.read()))
+    sleep(1)
+    extend_arm()
+    sleep(1)
+    mc.Motors.turnDegrees(30, TURN_SPEED, 0, False)
+    grip()
+    print("gripping" + str(mc.Servos.read()))
+    sleep(1)
+    stow_arm()
+    mc.LEDs.writeAll([255, 255, 0])
+
+    RETRIEVING = False
 
 
-# Connects to the rover
-print("Please enter your rover number:")
-while True:
+# for connecting to the rover when running this in isolation
 
+# rc = mc.RoverController()
 
-    entry = input()
-    if entry.isnumeric():
-        port = int(entry)
-        if usingSim:
-            try:
-                rc.connectIP("127.0.0.1", port)
-            except:
-                print("Invalid port provided. Please try again.")
-            else:
-                break
-        else:
-            try:
-                rc.connectBLE(port)
-            except:
-                print("Device is not ready for use. Please try another bot.")
-            else:
-                break
-    else:
-        print("Please enter a numerical value.")
+# port = 83  # int(entry)
+# rc.connectBLE(port)
 
-rc.startRover()
+# rc.startRover()
 
-# Pauses program until ready to start
-input("Press Enter to continue...")
-main()
+# # Pauses program until ready to start
+# input("Press Enter to continue...")
+# grab_cheese()
 
-rc.stopRover()
-rc.end()
-
+# rc.stopRover()
+# rc.end()
