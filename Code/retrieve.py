@@ -4,15 +4,15 @@ from time import sleep
 
 # constant definitions
 EXTEND_ANGLE = 80
-STOW_ANGLE = -89
-PREGRIP_POSITION = 50
-GRIP_POSITION = 84
+STOW_ANGLE = -80
+PREGRIP_POSITION = 55
+GRIP_POSITION = 80
 PREGRIP_STOW = 0
 
 PRE_SCAN_TURN = 10
 LEFT = -20
 RIGHT = 20
-INCREMENTS = 10
+INCREMENTS = 8
 TURN_SPEED = 5
 
 MIN_DIST = 4
@@ -46,7 +46,6 @@ def scan_for_cheese(scan_limit) -> int:
     smallest = 255
     bearing = 0
     turned = 0
-    found = False
     increment_count = 0
 
     # turn 20 degrees and find the smallest ultrasonic distance
@@ -59,8 +58,9 @@ def scan_for_cheese(scan_limit) -> int:
             smallest = mc.Ultrasonic.read()
             bearing = turned
             increment_count += 1
-    mc.Motors.turnDegrees(-((scan_limit//INCREMENTS) *
-                          increment_count + 2))
+    # center on the cheese (lowest distance value)
+    # ((scan_limit//INCREMENTS) *increment_count + 4))
+    mc.Motors.turnDegrees(-(turned))
 
     adjust_distance(smallest)
     return bearing
@@ -107,11 +107,15 @@ def grab_cheese():
     sleep(1)
     extend_arm()
     sleep(1)
-    mc.Motors.turnDegrees(30, TURN_SPEED, 0, False)
+    # sweep to scoop cheese
+    mc.Motors.turnDegrees(20, TURN_SPEED, 0, False)
     grip()
     print("gripping" + str(mc.Servos.read()))
     sleep(1)
     stow_arm()
+    # turn back to original bearing
+    mc.Motors.turnDegrees(-10, TURN_SPEED, 0, False)
+    # NOTE: back up here?
     mc.LEDs.writeAll([255, 255, 0])
 
     RETRIEVING = False
