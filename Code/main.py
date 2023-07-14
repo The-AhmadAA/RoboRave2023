@@ -1,28 +1,56 @@
 from micromelon import *
+import retrieve
+from time import *
 
 # Constants
 
 # Roborave cell size is slightly over 26.5 cm (including posts, approximately 27.7 cm)
-CELL_SIZE = 36
+CELL_SIZE = 27
+MAX_DIST = 25  # distance to a wall
 # Speed should have a magnitude no greater than 30
 MOVE_SPEED = 25
-TURN = 90
+MOVE_TIME = 1
+TURN_RADIUS = 1
+OFFSET = 0
+TURN = 90  # changed this to 70 for a 90 deg turn due to some shonky wheel encoding/imu values?
 LEFT = -1
 RIGHT = 1
 STRAIGHT = 0
 BACK = 2
 
+END_REACHED = False
 # Functions
 
 # Determines the change in angle required to correct the bearing
+
+
 def correctBearing():
     rotation = IMU.readGyroAccum(2)
     offset = rotation % TURN
     if offset > (TURN / 2):
         offset -= TURN
-    return round(offset)
+    return 0  # round(offset)
+
+# Attempts to recover the rover from a wall-strike situation
+
+
+def recover(uncommanded_turn):
+    '''
+    Takes in the degrees of uncommanded turn and attempts to move the rover to a pre
+    wall-strike configuration
+
+    Arguments:
+    uncommanded_turn(int): the number of degrees of uncommanded turn
+
+    returns: None
+    '''
+    print(str(uncommanded_turn))
+    Motors.moveDistance(-5)
+    Motors.turnDegrees(uncommanded_turn)
+
 
 # Removes dead ends from the path
+
 def cullDeadEnds(path_taken):
     dead_ends = True
     while dead_ends:
@@ -52,6 +80,8 @@ def cullDeadEnds(path_taken):
     return path_taken
 
 # Reverses the path such that it can be followed from end to beginning
+
+
 def reversePath(path_taken):
     path_taken.reverse()
     for i in range(len(path_taken)):
@@ -61,39 +91,119 @@ def reversePath(path_taken):
             path_taken[i] = LEFT
     return path_taken
 
+# maze specific turn function
+
+
+def turn(direction):
+    direction_word = {LEFT: "left", RIGHT: "right", BACK: "back"}
+    print("turning " + direction_word[direction])
+    # correction for arriving short of an intersection (due to IR sensor position)
+    Motors.moveDistance(2)  # move into the intersection
+
+    Motors.turnDegrees(direction * (TURN - OFFSET),
+                       MOVE_SPEED//3, TURN_RADIUS, False)
+    END_REACHED = forward()
+    return direction
+
+# maze specific forward motion
+
+
+def forward():
+    # while (Ultrasonic.read() > CELL_SIZE):
+    print("going straight")
+    while True:
+        Motors.write(MOVE_SPEED)
+        print("sleep started")
+        sleep(MOVE_TIME)
+        print("sleep finished")
+        # print(str(rc.readAttribute()))
+        if IR.readLeft() > MAX_DIST:
+            print("left far")
+            break
+        if IR.readRight() > MAX_DIST:   # CELL_SIZE:
+            print("right far")
+            break
+        if Ultrasonic.read() < MAX_DIST:
+            print("front near")
+            break
+        if reachedEnd():
+            Motors.write(0)
+            return True
+
+    Motors.write(0)
+    return False
+    # continue
+
 # Determines whether the rover has reached the end square of the maze
+
+
 def reachedEnd():
-    colour_brightness = Colour.readSensor(CS.BRIGHT, 1)
-    return colour_brightness > 180
+    # TODO: configure this for the actual maze!
+    start = process_time_ns()
+    while (process_time_ns() - start) < 50000000:
+        # print("checking for endzone")
+        colour_brightness = Colour.sensorSees(COLOURS.RED)
+        if colour_brightness:
+            print("endzone detected")
+            return True
+
+    return False
+
 
 # Main control flow function
 
 def main():
+    LEDs.writeAll([0, 0, 255])
+    retrieve.stow_arm()
+    retrieve.pregrip_pos()
+
     path_taken = []
     # Employs a sort of depth-first search to 'hug the left wall', keeping
     # track of the path taken (flipping lefts and rights)
     while True:
-        if IR.readLeft() > CELL_SIZE:
-            Motors.turnDegrees(LEFT * TURN + correctBearing(), MOVE_SPEED)
-            Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
-            path_taken.append(LEFT)
-        elif Ultrasonic.read() > CELL_SIZE:
-            Motors.turnDegrees(STRAIGHT * TURN + correctBearing(), MOVE_SPEED)
-            Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
-            path_taken.append(STRAIGHT)
-        elif IR.readRight() > CELL_SIZE:
-            Motors.turnDegrees(RIGHT * TURN + correctBearing(), MOVE_SPEED)
-            Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
-            path_taken.append(RIGHT)
-        else:
-            Motors.turnDegrees(BACK * TURN + correctBearing(), MOVE_SPEED)
-            Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
-            path_taken.append(BACK)
-        Motors.write(0, 0, 0.1)
-        if reachedEnd():
+        end_reached = END_REACHED
+        if end_reached:
             break
+
+        elif IR.readLeft() > MAX_DIST:  # opening on the left
+            path_taken.append(turn(LEFT))
+
+        elif IR.readRight() > MAX_DIST:  # opening on the right
+            path_taken.append(turn(RIGHT))
+
+        elif Ultrasonic.read() > MAX_DIST:  # corridor continues
+            # Motors.turnDegrees(STRAIGHT * TURN + correctBearing(), MOVE_SPEED)
+            # current_bearing = IMU.readGyro()[0]
+            # Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
+
+            # # add in a recovery detection statement
+            # new_bearing = IMU.readGyro()[0]
+            # if abs(current_bearing - new_bearing) > 3:
+            #     print("detected wall-strike?")
+            #     # recover(int(new_bearing - current_bearing))
+
+            # # go straight until a wall or end is reached
+            end_reached = forward()
+            path_taken.append(STRAIGHT)
+            if end_reached:
+                break
+
+        elif Ultrasonic.read() < MAX_DIST and IR.readLeft() < MAX_DIST and IR.readRight() < MAX_DIST:
+            # Motors.turnDegrees(BACK * TURN + correctBearing(), MOVE_SPEED)
+            # Motors.moveDistance(CELL_SIZE, MOVE_SPEED)
+            path_taken.append(turn(BACK))
+
+        else:
+            continue
+
     # Print statement helps show the rover is on track
     print("Reached goal!")
+    retrieve.grab_cheese()
+    while (retrieve.RETRIEVING):
+        sleep(1)
+
+    # TODO: reset position for start of return phase?
+
     # Remove dead-end routes from the path
     clean_path = cullDeadEnds(path_taken)
     # Reverses order of path taken to return correctly
@@ -108,6 +218,7 @@ def main():
     print("Returned to start!")
 
 # Setup of device - not part of the algorithm
+
 
 rc = RoverController()
 
