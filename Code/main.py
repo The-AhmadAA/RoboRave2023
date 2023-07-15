@@ -5,10 +5,18 @@ from retrieve import *
 
 # Constants
 
+# checklist of fine tuning values
+
+# start and finish colours
+# cell size
+# turn
+# rover size?
+
+
 # -----
 # Things to fiddle with for calibration:
 # Roborave cell size is slightly over 26.5 cm (including posts, approximately 27.7 cm)
-CELL_SIZE = 24  # if using sim use 36
+CELL_SIZE = 28  # if using sim use 36
 # Rover length / width in cm
 ROVER_SIZE = 13
 # Speed should have a magnitude no greater than 30
@@ -20,7 +28,8 @@ TOLERANCE = 10
 # The initial angle reading to use as an offset later on
 INIT_ANGLE = [0, 0, 0]
 # Turning values
-TURN = 70
+TURN = 90
+TURN_OFFSET = -20
 LEFT = -1
 RIGHT = 1
 STRAIGHT = 0
@@ -36,7 +45,7 @@ CLEARANCE = (CELL_SIZE - ROVER_SIZE) / 2
 # Sim details
 START_COLOUR = [160, 185, 137]  # FIXME: 'black' tape # [215, 190, 60]
 
-END_COLOUR = [225, 195, 145]  # FIXME: red tape, change for green
+END_COLOUR = [145, 200, 145]  # green
 # Functions
 
 # Replaces IMU.readGyroAccum() to account for any initial accumulation prior to the start of the program.
@@ -196,7 +205,8 @@ def searching():
         wall_boost = (IR.readRight() < CELL_SIZE) * \
             (CLEARANCE - IR.readRight())
         delay(0.1)
-        Motors.turnDegrees(LEFT * TURN + correctBearing(), MOVE_SPEED)
+        Motors.turnDegrees(LEFT * TURN + correctBearing() -
+                           TURN_OFFSET, MOVE_SPEED)
         moveForward(CELL_SIZE + wall_boost)
         return LEFT
     elif Ultrasonic.read() > 0.75 * CELL_SIZE:
@@ -207,14 +217,15 @@ def searching():
     elif IR.readRight() > CELL_SIZE:
         wall_boost = (IR.readLeft() < CELL_SIZE) * (CLEARANCE - IR.readLeft())
         delay(0.1)
-        Motors.turnDegrees(RIGHT * TURN + correctBearing(), MOVE_SPEED)
+        Motors.turnDegrees(RIGHT * TURN + correctBearing() +
+                           TURN_OFFSET, MOVE_SPEED)
         moveForward(CELL_SIZE + wall_boost)
         return RIGHT
     else:
         if Ultrasonic.read() < CLEARANCE:
             Motors.moveDistance(Ultrasonic.read() - CLEARANCE)
         delay(0.1)
-        Motors.turnDegrees(BACK * TURN, MOVE_SPEED)
+        Motors.turnDegrees(BACK * TURN + TURN_OFFSET, MOVE_SPEED)
         Motors.turnDegrees(correctBearing() +
                            selfCentreAngle(CELL_SIZE), MOVE_SPEED)
         moveForward(CELL_SIZE)
@@ -248,7 +259,7 @@ def main():
 
     # -----
     # back up to avoid case where cheese is close to the line
-    Motors.moveDistance(-5)
+    Motors.moveDistance(-2)
     grab_cheese()
     # This is where the cheese pickup happens, replace this block.
     # Once cheese is picked up, will need to drive forward into the
