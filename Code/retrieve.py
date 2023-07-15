@@ -4,7 +4,7 @@ import time
 import math
 
 # constant definitions
-EXTEND_ANGLE = 80
+EXTEND_ANGLE = 75
 STOW_ANGLE = -80
 PREGRIP_POSITION = 60
 GRIP_POSITION = 80
@@ -42,6 +42,7 @@ def grip():
     Servos.left(GRIP_POSITION)
 
 # Quinn's block
+
 
     # Params
 ROVER_SIZE = 13
@@ -91,7 +92,8 @@ def scan_for_cheese(scan_limit) -> int:
             increment_count += 1
     # center on the cheese (lowest distance value)
     # ((scan_limit//INCREMENTS) *increment_count + 4))
-    Motors.turnDegrees(-(turned))
+    print("bearing = " + str(bearing))
+    Motors.turnDegrees(-(scan_limit - bearing))
 
     adjust_distance(smallest)
     return bearing
@@ -131,22 +133,20 @@ def grab_cheese():
         Motors.turnDegrees(-PRE_SCAN_TURN)
         smallest_dir = scan_for_cheese(RIGHT)
 
-        # print(f"Cheese found at bearing {smallest_dir}")
-
-        Motors.turnDegrees(smallest_dir - 25)
+        Motors.turnDegrees(smallest_dir-25)
         pregrip_pos()
         print("pregrip" + str(Servos.read()))
         time.sleep(1)
         extend_arm()
         time.sleep(1)
         # sweep to scoop cheese
-        Motors.turnDegrees(20, TURN_SPEED, 0, False)
+        Motors.turnDegrees(smallest_dir*2, TURN_SPEED, 0, False)
         grip()
         print("gripping" + str(Servos.read()))
         time.sleep(1)
         stow_arm()
         # turn back to original bearing
-        Motors.turnDegrees(-10, TURN_SPEED, 0, False)
+        Motors.turnDegrees(-smallest_dir, TURN_SPEED, 0, False)
         if not is_cheese_present():
             Motors.turnDegrees(-SWEEP_ANGLE//2)
             break
