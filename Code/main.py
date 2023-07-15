@@ -16,20 +16,27 @@ from retrieve import *
 # -----
 # Things to fiddle with for calibration:
 # Roborave cell size is slightly over 26.5 cm (including posts, approximately 27.7 cm)
-CELL_SIZE = 28  # if using sim use 36
+CELL_SIZE = 22  # if using sim use 36
 # Rover length / width in cm
 ROVER_SIZE = 13
 # Speed should have a magnitude no greater than 30
 MOVE_SPEED = 15
+# Turning Speed
+TURN_SPEED = 5
 # The colour tolerance in detecting lines passed over
 TOLERANCE = 10
 # -----
+
+# Clearance to maintain from walls
+CLEARANCE = (CELL_SIZE - ROVER_SIZE) / 2
+# Hard distance to not hit walls
+DONT_HIT_WALL_DIST = 10
 
 # The initial angle reading to use as an offset later on
 INIT_ANGLE = [0, 0, 0]
 # Turning values
 TURN = 90
-TURN_OFFSET = -20
+TURN_OFFSET = -25
 LEFT = -1
 RIGHT = 1
 STRAIGHT = 0
@@ -39,8 +46,6 @@ BACK = 2
 # Stores whether the finish line has been reached.
 REACHED_CHEESE = False
 FINISHED = False
-# The clearance to maintain when approaching walls, is updated throughout the run for accuracy
-CLEARANCE = (CELL_SIZE - ROVER_SIZE) / 2
 
 # Sim details
 START_COLOUR = [160, 185, 137]  # FIXME: 'black' tape # [215, 190, 60]
@@ -49,8 +54,6 @@ END_COLOUR = [145, 200, 145]  # green
 # Functions
 
 # Replaces IMU.readGyroAccum() to account for any initial accumulation prior to the start of the program.
-
-
 def progGyroAccum(axis=None):
     if axis == None:
         reading = IMU.readGyroAccum()
@@ -58,12 +61,9 @@ def progGyroAccum(axis=None):
     elif axis >= 0 and axis <= 2:
         return IMU.readGyroAccum(axis) - INIT_ANGLE[axis]
     else:
-        raise Exception(
-            "Argument to progGyroAccum must be a number between 0 and 2")
+        raise Exception("Argument to progGyroAccum must be a number between 0 and 2")
 
 # Determines the change in angle required to correct the bearing
-
-
 def correctBearing():
     rotation = progGyroAccum(2)
     offset = rotation % TURN
@@ -72,8 +72,6 @@ def correctBearing():
     return round(offset)
 
 # Determines whether the rover is between two walls, and if so uses the difference in distance to center itself.
-
-
 def selfCentreAngle(distance):
     if IR.readLeft() < CELL_SIZE and IR.readRight() < CELL_SIZE:
         # global CLEARANCE
@@ -83,8 +81,7 @@ def selfCentreAngle(distance):
         right = IR.readRight()
         dist_from_mid = abs(right - left) / 2
         dist_from_mid *= CELL_SIZE / (left + right + ROVER_SIZE)
-        side = -1 * (not right > left) + \
-            (right > left)
+        side = -1 * (left >= right) + (right > left)
         if dist_from_mid == 0:
             return 0
         tan_theta = distance / dist_from_mid
@@ -99,8 +96,6 @@ def passesColour(colour):
         or Colour.sensorSees(colour, 2, TOLERANCE)
 
 # Used to move the rover forward one cell
-
-
 def moveForward(distance):
     Motors.write(MOVE_SPEED)
     start = time.time()
@@ -113,16 +108,14 @@ def moveForward(distance):
             reachedEnd()
         # Don't drive into a wall, stop if uncommanded rotation about x or y
         # or progGyroAccum(0) > TOLERANCE or progGyroAccum(1) > TOLERANCE:
-        if Ultrasonic.read() < CLEARANCE:
+        if Ultrasonic.read() < DONT_HIT_WALL_DIST:
             break
     Motors.write(0)
     delay(0.01)
-    if Ultrasonic.read() < 1.5 * CLEARANCE:
-        Motors.moveDistance(Ultrasonic.read() - 1.5 * CLEARANCE)
+    if Ultrasonic.read() < CLEARANCE:
+        Motors.moveDistance(Ultrasonic.read() - CLEARANCE)
 
 # Removes dead ends from the path
-
-
 def cullDeadEnds(path_taken):
     dead_ends = True
     while dead_ends:
@@ -159,8 +152,6 @@ def cullDeadEnds(path_taken):
     return path_taken
 
 # Reverses the path such that it can be followed from end to beginning
-
-
 def reversePath(path_taken):
     path_taken.reverse()
     for i in range(len(path_taken)):
@@ -171,8 +162,6 @@ def reversePath(path_taken):
     return path_taken
 
 # Determines whether the rover has reached the end square of the maze
-
-
 def reachedEnd():
     global REACHED_CHEESE, FINISHED
     # -----
@@ -197,43 +186,34 @@ def reachedEnd():
         return False
 
 # Runs the logic for the 'hug-left-wall' algorithm and returns the decision
-
-
 def searching():
     # Checks in turn: left, straight, right, and backward turns.
     if IR.readLeft() > CELL_SIZE:
-        wall_boost = (IR.readRight() < CELL_SIZE) * \
-            (CLEARANCE - IR.readRight())
+        wall_boost = (IR.readRight() < CELL_SIZE) * (CLEARANCE - IR.readRight())
         delay(0.1)
-        Motors.turnDegrees(LEFT * TURN + correctBearing() -
-                           TURN_OFFSET, MOVE_SPEED)
+        Motors.turnDegrees(LEFT * TURN + correctBearing() - TURN_OFFSET, TURN_SPEED)
         moveForward(CELL_SIZE + wall_boost)
         return LEFT
     elif Ultrasonic.read() > 0.75 * CELL_SIZE:
-        Motors.turnDegrees(STRAIGHT * TURN + correctBearing() +
-                           selfCentreAngle(CELL_SIZE), MOVE_SPEED)
+        Motors.turnDegrees(STRAIGHT * TURN + correctBearing() + selfCentreAngle(CELL_SIZE), TURN_SPEED)
         moveForward(CELL_SIZE)
         return STRAIGHT
     elif IR.readRight() > CELL_SIZE:
         wall_boost = (IR.readLeft() < CELL_SIZE) * (CLEARANCE - IR.readLeft())
         delay(0.1)
-        Motors.turnDegrees(RIGHT * TURN + correctBearing() +
-                           TURN_OFFSET, MOVE_SPEED)
+        Motors.turnDegrees(RIGHT * TURN + correctBearing() + TURN_OFFSET, TURN_SPEED)
         moveForward(CELL_SIZE + wall_boost)
         return RIGHT
     else:
         if Ultrasonic.read() < CLEARANCE:
             Motors.moveDistance(Ultrasonic.read() - CLEARANCE)
         delay(0.1)
-        Motors.turnDegrees(BACK * TURN + TURN_OFFSET, MOVE_SPEED)
-        Motors.turnDegrees(correctBearing() +
-                           selfCentreAngle(CELL_SIZE), MOVE_SPEED)
+        Motors.turnDegrees(BACK * TURN + TURN_OFFSET, TURN_SPEED)
+        # Motors.turnDegrees(correctBearing() + selfCentreAngle(CELL_SIZE), MOVE_SPEED)
         moveForward(CELL_SIZE)
         return BACK
 
 # Main control flow function
-
-
 def main():
     stow_arm()
     pregrip_pos()
@@ -273,13 +253,12 @@ def main():
     return_path = reversePath(clean_path)
     print("Path reversed")
 
-    Motors.turnDegrees(BACK * TURN + correctBearing(), MOVE_SPEED)
+    Motors.turnDegrees(BACK * TURN + correctBearing(), TURN_SPEED)
     # Follows the path taken to return to start
     for i in return_path:
         moveForward(CELL_SIZE)
         delay(0.1)
-        Motors.turnDegrees(i * TURN + correctBearing() +
-                           selfCentreAngle(CELL_SIZE), MOVE_SPEED)
+        Motors.turnDegrees(i * TURN + correctBearing() + selfCentreAngle(CELL_SIZE), TURN_SPEED)
     print("Backtrack finished")
     while not FINISHED:
         searching()
@@ -339,8 +318,7 @@ INIT_ANGLE = IMU.readGyroAccum()
 # start = time.time()
 main()
 # end = time.time()
-# print(
-#     f"The full run took {end - start} seconds to complete. This would result in {3 * (4 * 60 + start - end)} time points.")
+# print(f"The full run took {end - start} seconds to complete. This would result in {3 * (4 * 60 + start - end)} time points.")
 
 rc.stopRover()
 rc.end()
