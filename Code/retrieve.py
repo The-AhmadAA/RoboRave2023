@@ -6,7 +6,7 @@ import math
 # constant definitions
 EXTEND_ANGLE = 75
 STOW_ANGLE = -80
-PREGRIP_POSITION = 60
+PREGRIP_POSITION = 57
 GRIP_POSITION = 80
 PREGRIP_STOW = 0
 
@@ -17,7 +17,7 @@ INCREMENTS = 8
 TURN_SPEED = 5
 
 MIN_DIST = 4
-MAX_DIST = 5
+MAX_DIST = 4.5
 
 RETRIEVING = True
 
@@ -129,29 +129,30 @@ def grab_cheese():
     print("scanning right")
 
     # turn left to scan past the cheese
-    while True:
-        Motors.turnDegrees(-PRE_SCAN_TURN)
-        smallest_dir = scan_for_cheese(RIGHT)
+    # while True:
+    Motors.turnDegrees(-PRE_SCAN_TURN)
+    smallest_dir = scan_for_cheese(RIGHT)
 
-        Motors.turnDegrees(smallest_dir-25)
-        pregrip_pos()
-        print("pregrip" + str(Servos.read()))
-        time.sleep(1)
-        extend_arm()
-        time.sleep(1)
-        # sweep to scoop cheese
-        Motors.turnDegrees(smallest_dir*2, TURN_SPEED, 0, False)
-        grip()
-        print("gripping" + str(Servos.read()))
-        time.sleep(1)
-        stow_arm()
-        # turn back to original bearing
-        Motors.turnDegrees(-smallest_dir, TURN_SPEED, 0, False)
-        if not is_cheese_present():
-            Motors.turnDegrees(-SWEEP_ANGLE//2)
-            break
-        else:
-            Motors.turnDegrees(-SWEEP_ANGLE//2)
+    Motors.turnDegrees(smallest_dir-25)
+    pregrip_pos()
+    print("pregrip" + str(Servos.read()))
+    time.sleep(1)
+    extend_arm()
+    time.sleep(1)
+    # sweep to scoop cheese
+    Motors.turnDegrees(smallest_dir*2 + 10, TURN_SPEED, 0, False)
+    grip()
+    print("gripping" + str(Servos.read()))
+    time.sleep(1)
+    stow_arm()
+    # turn back to original bearing
+    Motors.turnDegrees(-smallest_dir, TURN_SPEED, 0, False)
+    Motors.turnDegrees(-SWEEP_ANGLE//2)
+    # break
+    # if not is_cheese_present():
+    #         Motors.turnDegrees(-SWEEP_ANGLE//2)
+    #         break
+    #     else:
 
     # NOTE: back up here?
     LEDs.writeAll([255, 255, 0])
